@@ -74,8 +74,16 @@ def calc_rs(sym_ns, start, end):
         ret_3m    = round(((c_now - c_3m) / c_3m)*100, 1)
         ret_12m   = round(((c_now - c_12m) / c_12m)*100, 1)
         from_high = round(((c_now - high_52w) / high_52w)*100, 1)
-        return {"sym": sym_ns.replace(".NS",""), "score": score, "price": round(c_now,1),
-                "r1m": ret_1m, "r3m": ret_3m, "r12m": ret_12m, "h52": round(high_52w,1), "fh": from_high}
+        return {
+            "sym": sym_ns.replace(".NS", ""),
+            "score": score,
+            "price": round(c_now, 1),
+            "r1m": ret_1m,
+            "r3m": ret_3m,
+            "r12m": ret_12m,
+            "h52": round(high_52w, 1),
+            "fh": from_high,
+        }
     except Exception:
         return None
 
@@ -83,8 +91,11 @@ def build_excel(df, fname):
     from openpyxl.styles import PatternFill, Font, Alignment
     from openpyxl.utils import get_column_letter
     cols = ["Rank","Symbol","RS Rating","Strength","Price","1M Ret%","3M Ret%","12M Ret%","52W High","From 52W High%"]
-    display = df.rename(columns={"rank":"Rank","sym":"Symbol","rs":"RS Rating","strength":"Strength",
-        "price":"Price","r1m":"1M Ret%","r3m":"3M Ret%","r12m":"12M Ret%","h52":"52W High","fh":"From 52W High%"})[cols]
+    display = df.rename(columns={
+        "rank":"Rank","sym":"Symbol","rs":"RS Rating","strength":"Strength",
+        "price":"Price","r1m":"1M Ret%","r3m":"3M Ret%","r12m":"12M Ret%",
+        "h52":"52W High","fh":"From 52W High%"
+    })[cols]
     with pd.ExcelWriter(fname, engine="openpyxl") as writer:
         display.to_excel(writer, sheet_name="RS Ratings", index=False)
         ws = writer.sheets["RS Ratings"]
@@ -93,18 +104,17 @@ def build_excel(df, fname):
             cell.font = Font(color="FFFFFF", bold=True, size=11)
             cell.alignment = Alignment(horizontal="center")
         for row_idx in range(2, len(display) + 2):
-            rs = ws.cell(row=row_idx, column=3).value
-            if   rs >= 90: bg, fg = "085041", "9FE1CB"
-            elif rs >= 80: bg, fg = "27500A", "C0DD97"
-            elif rs >= 60: bg, fg = "633806", "FAC775"
-            else:          bg, fg = "791F1F", "F7C1C1"
+            rs_val = ws.cell(row=row_idx, column=3).value
+            if   rs_val >= 90: bg, fg = "085041", "9FE1CB"
+            elif rs_val >= 80: bg, fg = "27500A", "C0DD97"
+            elif rs_val >= 60: bg, fg = "633806", "FAC775"
+            else:              bg, fg = "791F1F", "F7C1C1"
             for col in range(1, len(cols) + 1):
                 c = ws.cell(row=row_idx, column=col)
                 c.fill = PatternFill("solid", fgColor=bg)
                 c.font = Font(color=fg, size=10)
                 c.alignment = Alignment(horizontal="center")
-        for i, w in enumerate([6,16,11,13,12,10,10,12,12,16], 1):
-            from openpyxl.utils import get_column_letter
+        for i, w in enumerate([6, 16, 11, 13, 12, 10, 10, 12, 12, 16], 1):
             ws.column_dimensions[get_column_letter(i)].width = w
         ws.freeze_panes = "A2"
 
@@ -117,17 +127,22 @@ def send_email(excel_path, df, date_str):
     subject = f"NSE RS Rating Report — {date_str} | {exc_count} Exceptional stocks"
     top10_rows = ""
     for _, row in df.head(10).iterrows():
-        if row["rs"] >= 90:   bg, fg = "#085041", "#9FE1CB"
-        elif row["rs"] >= 80: bg, fg = "#27500A", "#C0DD97"
-        else:                 bg, fg = "#633806", "#FAC775"
+        if row["rs"] >= 90:
+            bg, fg = "#085041", "#9FE1CB"
+        elif row["rs"] >= 80:
+            bg, fg = "#27500A", "#C0DD97"
+        else:
+            bg, fg = "#633806", "#FAC775"
         star = "★" if row["rs"] >= 90 else "◆"
+        c12 = "#1D9E75" if row["r12m"] >= 0 else "#E24B4A"
         top10_rows += (
             "<tr>"
             f'<td style="padding:8px 12px;border-bottom:1px solid #222">{int(row["rank"])}</td>'
             f'<td style="padding:8px 12px;border-bottom:1px solid #222;font-weight:600">{row["sym"]}</td>'
             f'<td style="padding:8px 12px;border-bottom:1px solid #222">'
-            f'<span style="background:{bg};color:{fg};padding:3px 10px;border-radius:5px;font-weight:700">{row["rs"]} {star}</span></td>'
-            f'<td style="padding:8px 12px;border-bottom:1px solid #222;color:{"#1D9E75" if row["r12m"]>=0 else "#E24B4A"}">{row["r12m"]}%</td>'
+            f'<span style="background:{bg};color:{fg};padding:3px 10px;border-radius:5px;font-weight:700">'
+            f'{row["rs"]} {star}</span></td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #222;color:{c12}">{row["r12m"]}%</td>'
             "</tr>"
         )
     body_html = f"""
@@ -175,12 +190,12 @@ def send_email(excel_path, df, date_str):
     encoders.encode_base64(part)
     part.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(excel_path)}"')
     msg.attach(part)
-  try:
+    try:
+        recipients = [e.strip() for e in EMAIL_TO.split(",")]
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            recipients = [e.strip() for e in EMAIL_TO.split(",")]
             server.sendmail(EMAIL_SENDER, recipients, msg.as_string())
-        print(f"  Email sent to {recipients}")
+        print(f"  Email sent to: {recipients}")
     except Exception as e:
         print(f"  Email failed: {e}")
 
@@ -198,21 +213,32 @@ def main():
             results.append(r)
         if (i + 1) % 100 == 0:
             elapsed = time.time() - t0
-            rem = (elapsed / (i+1)) * (len(symbols) - i - 1) / 60
+            rem = (elapsed / (i + 1)) * (len(symbols) - i - 1) / 60
             print(f"  [{i+1}/{len(symbols)}] {len(results)} ok | ~{rem:.0f} min left")
         time.sleep(0.3)
     if not results:
         print("No results.")
         return
     df = pd.DataFrame(results)
-    df["rs"] = df["score"].rank(pct=True).apply(lambda p: max(1, min(99, round(1+p*98)))).astype(int)
+    df["rs"] = df["score"].rank(pct=True).apply(
+        lambda p: max(1, min(99, round(1 + p * 98)))
+    ).astype(int)
     df = df.sort_values("rs", ascending=False).drop(columns=["score"])
-    df["rank"] = range(1, len(df)+1)
-    df["strength"] = df["rs"].apply(lambda r: "Exceptional" if r>=90 else ("Strong" if r>=80 else ("Average" if r>=60 else "Weak")))
+    df["rank"] = range(1, len(df) + 1)
+    df["strength"] = df["rs"].apply(
+        lambda r: "Exceptional" if r >= 90 else (
+            "Strong" if r >= 80 else (
+                "Average" if r >= 60 else "Weak"
+            )
+        )
+    )
     records = df.to_dict(orient="records")
-    payload = {"updated": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-               "updated_ist": datetime.now().strftime("%d %b %Y %I:%M %p IST"),
-               "total": len(records), "stocks": records}
+    payload = {
+        "updated":     datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_ist": datetime.now().strftime("%d %b %Y %I:%M %p IST"),
+        "total":       len(records),
+        "stocks":      records,
+    }
     os.makedirs("docs", exist_ok=True)
     with open("docs/data.json", "w") as f:
         json.dump(payload, f, separators=(",", ":"))
@@ -221,7 +247,7 @@ def main():
     xl = f"NSE_RS_{ts}.xlsx"
     build_excel(df, xl)
     send_email(xl, df, date_str)
-    print(f"Done in {round((time.time()-t0)/60,1)} min")
+    print(f"Done in {round((time.time() - t0) / 60, 1)} min")
 
 if __name__ == "__main__":
     main()
