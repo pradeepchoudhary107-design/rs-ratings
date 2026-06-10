@@ -1,161 +1,226 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NSE RS Rating Dashboard</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh}
-header{background:#111;border-bottom:1px solid #1e1e1e;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-.logo{font-size:1.05rem;font-weight:500;color:#fff}
-.updated{font-size:12px;color:#444}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:1rem 1.5rem}
-.stat{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:.75rem 1rem}
-.stat-label{font-size:11px;color:#555;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
-.stat-val{font-size:22px;font-weight:500;color:#fff}
-.controls{padding:.75rem 1.5rem;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-input[type=text]{background:#111;border:1px solid #2a2a2a;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:13px;width:200px;outline:none}
-input[type=text]:focus{border-color:#444}
-.filters{display:flex;gap:8px;flex-wrap:wrap}
-.fb{background:#111;border:1px solid #2a2a2a;color:#666;padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;transition:.15s}
-.fb:hover{border-color:#444;color:#ccc}
-.fb.active{background:#1a1a1a;border-color:#555;color:#fff}
-.fb.fe.active{background:#0a2218;border-color:#085041;color:#9FE1CB}
-.fb.fs.active{background:#0e1f07;border-color:#27500A;color:#C0DD97}
-.fb.fa.active{background:#1f1200;border-color:#633806;color:#FAC775}
-.fb.fw.active{background:#1f0a0a;border-color:#791F1F;color:#F7C1C1}
-.tw{overflow-x:auto;padding:0 1.5rem 2rem}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:680px}
-th{background:#111;color:#555;padding:10px 12px;text-align:left;font-weight:500;border-bottom:1px solid #1e1e1e;cursor:pointer;user-select:none;white-space:nowrap}
-th:hover{color:#aaa}
-th.sa::after{content:" ▲"}th.sd::after{content:" ▼"}
-td{padding:9px 12px;border-bottom:1px solid #141414;white-space:nowrap}
-tr:hover td{background:#0f0f0f}
-.badge{padding:3px 10px;border-radius:5px;font-weight:700;font-size:12px}
-.p{color:#1D9E75}.n{color:#E24B4A}
-.hidden{display:none}
-.loader{text-align:center;padding:3rem;color:#444}
-.empty{text-align:center;padding:3rem;color:#444;font-size:14px}
-</style>
-</head>
-<body>
-<header>
-  <div class="logo">NSE RS Rating Dashboard</div>
-  <div class="updated" id="upd">Loading...</div>
-</header>
-<div class="stats">
-  <div class="stat"><div class="stat-label">Total Stocks</div><div class="stat-val" id="s0">—</div></div>
-  <div class="stat"><div class="stat-label">Exceptional 90+</div><div class="stat-val" id="s1" style="color:#1D9E75">—</div></div>
-  <div class="stat"><div class="stat-label">Strong 80–89</div><div class="stat-val" id="s2" style="color:#639922">—</div></div>
-  <div class="stat"><div class="stat-label">Weak &lt;40</div><div class="stat-val" id="s3" style="color:#E24B4A">—</div></div>
-</div>
-<div class="controls">
-  <input type="text" id="search" placeholder="Search symbol..." oninput="render()">
-  <div class="filters">
-    <button class="fb active" onclick="flt('all',this)">All</button>
-    <button class="fb fe"     onclick="flt('exc',this)">Exceptional 90+</button>
-    <button class="fb fs"     onclick="flt('str',this)">Strong 80+</button>
-    <button class="fb fa"     onclick="flt('avg',this)">Average 60–79</button>
-    <button class="fb fw"     onclick="flt('wk', this)">Weak &lt;60</button>
-    <button class="fb"        onclick="flt('n52',this)">Near 52W High (≤5%)</button>
-  </div>
-</div>
-<div class="tw">
-  <div class="loader" id="loader">Loading data...</div>
-  <table id="tbl" style="display:none">
-    <thead><tr>
-      <th onclick="srt('rank')">Rank</th>
-      <th onclick="srt('sym')">Symbol</th>
-      <th onclick="srt('rs')">RS Rating</th>
-      <th>Strength</th>
-      <th onclick="srt('price')">Price</th>
-      <th onclick="srt('r1m')">1M %</th>
-      <th onclick="srt('r3m')">3M %</th>
-      <th onclick="srt('r12m')">12M %</th>
-      <th onclick="srt('fh')">From 52W High</th>
-    </tr></thead>
-    <tbody id="tb"></tbody>
-  </table>
-  <div class="empty hidden" id="emp">No stocks match.</div>
-</div>
-<script>
-let ALL=[],CF='all',SC='rank',SD=1;
-function rs(r){
-  if(r>=90)return{bg:'#085041',fg:'#9FE1CB',lb:'Exceptional'};
-  if(r>=80)return{bg:'#27500A',fg:'#C0DD97',lb:'Strong'};
-  if(r>=60)return{bg:'#633806',fg:'#FAC775',lb:'Average'};
-  return{bg:'#791F1F',fg:'#F7C1C1',lb:'Weak'};
-}
-fetch('data.json?t='+Date.now()).then(r=>r.json()).then(d=>{
-  document.getElementById('loader').style.display='none';
-  document.getElementById('tbl').style.display='';
-  if(!d.stocks||!d.stocks.length){
-    document.getElementById('emp').classList.remove('hidden');
-    document.getElementById('emp').textContent='Pehla scan Saturday raat hoga — tab tak wait karo!';
-    document.getElementById('upd').textContent='No data yet';
-    return;
-  }
-  ALL=d.stocks;
-  document.getElementById('upd').textContent='Updated: '+(d.updated_ist||d.updated);
-  document.getElementById('s0').textContent=d.total.toLocaleString();
-  document.getElementById('s1').textContent=ALL.filter(s=>s.rs>=90).length;
-  document.getElementById('s2').textContent=ALL.filter(s=>s.rs>=80&&s.rs<90).length;
-  document.getElementById('s3').textContent=ALL.filter(s=>s.rs<40).length;
-  render();
-}).catch(()=>document.getElementById('loader').textContent='Error loading. Refresh karo.');
+import yfinance as yf
+import pandas as pd
+import requests
+import json
+import io
+import os
+import time
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 
-function flt(f,b){
-  CF=f;
-  document.querySelectorAll('.fb').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-  render();
-}
-function srt(c){
-  if(SC===c)SD*=-1;else{SC=c;SD=1;}
-  document.querySelectorAll('th').forEach(t=>t.classList.remove('sa','sd'));
-  const ths=['rank','sym','rs','_','price','r1m','r3m','r12m','fh'];
-  const el=document.querySelectorAll('th')[ths.indexOf(c)];
-  if(el)el.classList.add(SD===1?'sa':'sd');
-  render();
-}
-function render(){
-  const q=document.getElementById('search').value.trim().toLowerCase();
-  let data=ALL.filter(s=>{
-    if(q&&!s.sym.toLowerCase().includes(q))return false;
-    if(CF==='exc') return s.rs>=90;
-    if(CF==='str') return s.rs>=80;
-    if(CF==='avg') return s.rs>=60&&s.rs<80;
-    if(CF==='wk')  return s.rs<60;
-    if(CF==='n52') return s.fh>=-5;
-    return true;
-  });
-  data.sort((a,b)=>{
-    let av=a[SC],bv=b[SC];
-    if(typeof av==='string')return av.localeCompare(bv)*SD;
-    return(av-bv)*SD;
-  });
-  const tb=document.getElementById('tb');
-  const em=document.getElementById('emp');
-  if(!data.length){tb.innerHTML='';em.classList.remove('hidden');return;}
-  em.classList.add('hidden');
-  tb.innerHTML=data.map(s=>{
-    const st=rs(s.rs);
-    const star=s.rs>=90?' ★':(s.rs>=80?' ◆':'');
-    const c1=s.r1m>=0?'p':'n',c3=s.r3m>=0?'p':'n',c12=s.r12m>=0?'p':'n',cf=s.fh>=0?'p':'n';
-    return '<tr>'
-      +'<td>'+s.rank+'</td>'
-      +'<td style="font-weight:500">'+s.sym+'</td>'
-      +'<td><span class="badge" style="background:'+st.bg+';color:'+st.fg+'">'+s.rs+star+'</span></td>'
-      +'<td style="color:'+st.bg+';font-weight:500">'+st.lb+'</td>'
-      +'<td>₹'+s.price+'</td>'
-      +'<td class="'+c1+'">'+s.r1m+'%</td>'
-      +'<td class="'+c3+'">'+s.r3m+'%</td>'
-      +'<td class="'+c12+'">'+s.r12m+'%</td>'
-      +'<td class="'+cf+'">'+s.fh+'%</td>'
-      +'</tr>';
-  }).join('');
-}
-</script>
-</body>
-</html>
+EMAIL_SENDER   = os.environ.get("EMAIL_SENDER", "")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")
+EMAIL_TO       = os.environ.get("EMAIL_TO", "")
+
+def get_nse_symbols():
+    print("Fetching NSE symbol list...")
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        s = requests.Session()
+        s.headers.update(headers)
+        s.get("https://www.nseindia.com", timeout=10)
+        r = s.get("https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv", timeout=15)
+        r.raise_for_status()
+        df = pd.read_csv(io.BytesIO(r.content))
+        col = next((c for c in df.columns if "SYMBOL" in c.upper()), df.columns[0])
+        syms = df[col].dropna().astype(str).str.strip().tolist()
+        syms = [s for s in syms if s and s.upper() != "SYMBOL" and len(s) <= 20]
+        print(f"  {len(syms)} symbols from NSE")
+        return syms
+    except Exception as e:
+        print(f"  NSE fetch failed: {e} — using fallback")
+        return [
+            "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","AXISBANK",
+            "BAJFINANCE","BHARTIARTL","KOTAKBANK","LT","HINDUNILVR","MARUTI",
+            "TATAMOTORS","WIPRO","HCLTECH","SUNPHARMA","ADANIENT","ULTRACEMCO",
+            "TITAN","NESTLEIND","TECHM","BAJAJFINSV","POWERGRID","NTPC","ONGC",
+            "COALINDIA","JSWSTEEL","TATASTEEL","HINDALCO","GRASIM","DRREDDY",
+            "CIPLA","DIVISLAB","EICHERMOT","HEROMOTOCO","BRITANNIA","APOLLOHOSP",
+            "TATACONSUM","BAJAJ-AUTO","SBILIFE","HDFCLIFE","UPL","BPCL",
+            "INDUSINDBK","ADANIPORTS","ZOMATO","M&M","ITC","IRCTC","DMART",
+            "PIDILITIND","HAVELLS","VOLTAS","BANDHANBNK","FEDERALBNK","LUPIN",
+            "ALKEM","PERSISTENT","LTIM","MPHASIS","COFORGE","TATAELXSI",
+            "TRENT","VEDL","NMDC","GAIL","IGL","PETRONET","DABUR","MARICO",
+            "COLPAL","TVSMOTOR","BOSCHLTD","DLF","GODREJPROP","SHRIRAMFIN",
+            "DIXON","POLYCAB","BEL","HAL","IRFC","RVNL","FORTIS","MAXHEALTH",
+            "ASTRAL","BALKRISIND","MUTHOOTFIN","CHOLAFIN","TATAPOWER","ADANIGREEN",
+            "SIEMENS","ABB","PNB","BANKBARODA","CANBK","TORNTPHARM","AUROPHARMA",
+        ]
+
+def calc_rs(sym_ns, start, end):
+    try:
+        hist = yf.download(sym_ns, start=start, end=end, progress=False, auto_adjust=True)
+        if hist.empty or len(hist) < 150:
+            return None
+        p = hist["Close"].squeeze()
+        if len(p) < 63:
+            return None
+        c_now = float(p.iloc[-1])
+        c_3m  = float(p.iloc[-63])
+        c_6m  = float(p.iloc[-126]) if len(p) >= 126 else float(p.iloc[0])
+        c_9m  = float(p.iloc[-189]) if len(p) >= 189 else float(p.iloc[0])
+        c_12m = float(p.iloc[-252]) if len(p) >= 252 else float(p.iloc[0])
+        q4 = (c_now - c_3m)  / c_3m
+        q3 = (c_3m  - c_6m)  / c_6m
+        q2 = (c_6m  - c_9m)  / c_9m
+        q1 = (c_9m  - c_12m) / c_12m
+        score = 0.40*q4 + 0.20*q3 + 0.20*q2 + 0.20*q1
+        high_52w  = float(p.iloc[-252:].max()) if len(p) >= 252 else float(p.max())
+        ret_1m    = round(((c_now - float(p.iloc[-21])) / float(p.iloc[-21]))*100, 1) if len(p) >= 21 else 0
+        ret_3m    = round(((c_now - c_3m) / c_3m)*100, 1)
+        ret_12m   = round(((c_now - c_12m) / c_12m)*100, 1)
+        from_high = round(((c_now - high_52w) / high_52w)*100, 1)
+        return {"sym": sym_ns.replace(".NS",""), "score": score, "price": round(c_now,1),
+                "r1m": ret_1m, "r3m": ret_3m, "r12m": ret_12m, "h52": round(high_52w,1), "fh": from_high}
+    except Exception:
+        return None
+
+def build_excel(df, fname):
+    from openpyxl.styles import PatternFill, Font, Alignment
+    from openpyxl.utils import get_column_letter
+    cols = ["Rank","Symbol","RS Rating","Strength","Price","1M Ret%","3M Ret%","12M Ret%","52W High","From 52W High%"]
+    display = df.rename(columns={"rank":"Rank","sym":"Symbol","rs":"RS Rating","strength":"Strength",
+        "price":"Price","r1m":"1M Ret%","r3m":"3M Ret%","r12m":"12M Ret%","h52":"52W High","fh":"From 52W High%"})[cols]
+    with pd.ExcelWriter(fname, engine="openpyxl") as writer:
+        display.to_excel(writer, sheet_name="RS Ratings", index=False)
+        ws = writer.sheets["RS Ratings"]
+        for cell in ws[1]:
+            cell.fill = PatternFill("solid", fgColor="111111")
+            cell.font = Font(color="FFFFFF", bold=True, size=11)
+            cell.alignment = Alignment(horizontal="center")
+        for row_idx in range(2, len(display) + 2):
+            rs = ws.cell(row=row_idx, column=3).value
+            if   rs >= 90: bg, fg = "085041", "9FE1CB"
+            elif rs >= 80: bg, fg = "27500A", "C0DD97"
+            elif rs >= 60: bg, fg = "633806", "FAC775"
+            else:          bg, fg = "791F1F", "F7C1C1"
+            for col in range(1, len(cols) + 1):
+                c = ws.cell(row=row_idx, column=col)
+                c.fill = PatternFill("solid", fgColor=bg)
+                c.font = Font(color=fg, size=10)
+                c.alignment = Alignment(horizontal="center")
+        for i, w in enumerate([6,16,11,13,12,10,10,12,12,16], 1):
+            from openpyxl.utils import get_column_letter
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = "A2"
+
+def send_email(excel_path, df, date_str):
+    if not EMAIL_PASSWORD:
+        print("  EMAIL_PASSWORD not set — skipping email.")
+        return
+    exc_count = len(df[df["rs"] >= 90])
+    str_count = len(df[(df["rs"] >= 80) & (df["rs"] < 90)])
+    subject = f"NSE RS Rating Report — {date_str} | {exc_count} Exceptional stocks"
+    top10_rows = ""
+    for _, row in df.head(10).iterrows():
+        if row["rs"] >= 90:   bg, fg = "#085041", "#9FE1CB"
+        elif row["rs"] >= 80: bg, fg = "#27500A", "#C0DD97"
+        else:                 bg, fg = "#633806", "#FAC775"
+        star = "★" if row["rs"] >= 90 else "◆"
+        top10_rows += (
+            "<tr>"
+            f'<td style="padding:8px 12px;border-bottom:1px solid #222">{int(row["rank"])}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #222;font-weight:600">{row["sym"]}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #222">'
+            f'<span style="background:{bg};color:{fg};padding:3px 10px;border-radius:5px;font-weight:700">{row["rs"]} {star}</span></td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #222;color:{"#1D9E75" if row["r12m"]>=0 else "#E24B4A"}">{row["r12m"]}%</td>'
+            "</tr>"
+        )
+    body_html = f"""
+    <div style="font-family:-apple-system,sans-serif;background:#0a0a0a;padding:2rem;max-width:640px;margin:0 auto">
+      <div style="background:#111;border-radius:12px;padding:1.5rem;margin-bottom:1rem">
+        <h1 style="color:#fff;font-size:1.2rem;font-weight:500;margin:0 0 4px">NSE RS Rating — Weekly Report</h1>
+        <p style="color:#555;font-size:13px;margin:0">{date_str}</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:1rem">
+        <div style="background:#111;border-radius:8px;padding:1rem;text-align:center">
+          <div style="color:#555;font-size:11px;margin-bottom:4px">TOTAL</div>
+          <div style="color:#fff;font-size:24px;font-weight:500">{len(df)}</div>
+        </div>
+        <div style="background:#0a2218;border:1px solid #085041;border-radius:8px;padding:1rem;text-align:center">
+          <div style="color:#1D9E75;font-size:11px;margin-bottom:4px">EXCEPTIONAL 90+</div>
+          <div style="color:#9FE1CB;font-size:24px;font-weight:500">{exc_count}</div>
+        </div>
+        <div style="background:#0e1f07;border:1px solid #27500A;border-radius:8px;padding:1rem;text-align:center">
+          <div style="color:#639922;font-size:11px;margin-bottom:4px">STRONG 80+</div>
+          <div style="color:#C0DD97;font-size:24px;font-weight:500">{str_count}</div>
+        </div>
+      </div>
+      <div style="background:#111;border-radius:12px;padding:1.5rem;margin-bottom:1rem">
+        <h2 style="color:#aaa;font-size:13px;font-weight:500;margin:0 0 1rem;text-transform:uppercase">Top 10 Stocks</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr style="color:#555">
+            <th style="text-align:left;padding:6px 12px;font-weight:500">Rank</th>
+            <th style="text-align:left;padding:6px 12px;font-weight:500">Symbol</th>
+            <th style="text-align:left;padding:6px 12px;font-weight:500">RS Rating</th>
+            <th style="text-align:left;padding:6px 12px;font-weight:500">12M Ret</th>
+          </tr>
+          {top10_rows}
+        </table>
+      </div>
+      <p style="color:#444;font-size:12px;text-align:center;margin:0">Full Excel attached · Auto-generated every Saturday</p>
+    </div>"""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = EMAIL_SENDER
+    msg["To"]      = EMAIL_TO
+    msg.attach(MIMEText(body_html, "html"))
+    with open(excel_path, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(excel_path)}"')
+    msg.attach(part)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, EMAIL_TO, msg.as_string())
+        print(f"  Email sent to {EMAIL_TO}")
+    except Exception as e:
+        print(f"  Email failed: {e}")
+
+def main():
+    t0 = time.time()
+    date_str = datetime.now().strftime("%d %b %Y")
+    print(f"NSE RS Scan — {date_str}")
+    symbols = get_nse_symbols()
+    end   = datetime.today()
+    start = end - timedelta(days=420)
+    results = []
+    for i, sym in enumerate(symbols):
+        r = calc_rs(f"{sym}.NS", start, end)
+        if r:
+            results.append(r)
+        if (i + 1) % 100 == 0:
+            elapsed = time.time() - t0
+            rem = (elapsed / (i+1)) * (len(symbols) - i - 1) / 60
+            print(f"  [{i+1}/{len(symbols)}] {len(results)} ok | ~{rem:.0f} min left")
+        time.sleep(0.3)
+    if not results:
+        print("No results.")
+        return
+    df = pd.DataFrame(results)
+    df["rs"] = df["score"].rank(pct=True).apply(lambda p: max(1, min(99, round(1+p*98)))).astype(int)
+    df = df.sort_values("rs", ascending=False).drop(columns=["score"])
+    df["rank"] = range(1, len(df)+1)
+    df["strength"] = df["rs"].apply(lambda r: "Exceptional" if r>=90 else ("Strong" if r>=80 else ("Average" if r>=60 else "Weak")))
+    records = df.to_dict(orient="records")
+    payload = {"updated": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+               "updated_ist": datetime.now().strftime("%d %b %Y %I:%M %p IST"),
+               "total": len(records), "stocks": records}
+    os.makedirs("docs", exist_ok=True)
+    with open("docs/data.json", "w") as f:
+        json.dump(payload, f, separators=(",", ":"))
+    print(f"  JSON saved: {len(records)} stocks")
+    ts = datetime.now().strftime("%Y%m%d")
+    xl = f"NSE_RS_{ts}.xlsx"
+    build_excel(df, xl)
+    send_email(xl, df, date_str)
+    print(f"Done in {round((time.time()-t0)/60,1)} min")
+
+if __name__ == "__main__":
+    main()
