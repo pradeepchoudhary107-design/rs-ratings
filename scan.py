@@ -178,7 +178,8 @@ def send_email(excel_path, df, date_str):
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_SENDER, EMAIL_TO, msg.as_string())
+            recipients = [e.strip() for e in EMAIL_TO.split(",")]
+server.sendmail(EMAIL_SENDER, recipients, msg.as_string())
         print(f"  Email sent to {EMAIL_TO}")
     except Exception as e:
         print(f"  Email failed: {e}")
