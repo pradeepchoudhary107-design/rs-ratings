@@ -175,12 +175,12 @@ def send_email(excel_path, df, date_str):
     encoders.encode_base64(part)
     part.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(excel_path)}"')
     msg.attach(part)
-    try:
+  try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             recipients = [e.strip() for e in EMAIL_TO.split(",")]
-server.sendmail(EMAIL_SENDER, recipients, msg.as_string())
-        print(f"  Email sent to {EMAIL_TO}")
+            server.sendmail(EMAIL_SENDER, recipients, msg.as_string())
+        print(f"  Email sent to {recipients}")
     except Exception as e:
         print(f"  Email failed: {e}")
 
